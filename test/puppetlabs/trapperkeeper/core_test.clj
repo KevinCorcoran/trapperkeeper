@@ -24,7 +24,7 @@
       (logging/with-test-logging
         (is (thrown-with-msg?
               RuntimeException #"Service ':MissingService' not found"
-              (testutils/bootstrap-services-with-empty-config [broken-service])))
+              (testutils/bootstrap-services [broken-service])))
         (is (logged? #"Error during app buildup!" :error)
             "App buildup error message not logged"))))
 
@@ -39,7 +39,7 @@
         (is (thrown-with-msg?
               RuntimeException
               #"Service function 'bar' not found in service 'FooService"
-              (testutils/bootstrap-services-with-empty-config
+              (testutils/bootstrap-services
                 [test-service
                  broken-service])))
         (is (logged? #"Error during app buildup!" :error)
@@ -90,12 +90,12 @@
 
 (deftest test-cli-args
   (testing "debug mode is off by default"
-    (testutils/with-app-with-empty-config app []
+    (testutils/with-app app []
       (let [config-service (get-service app :ConfigService)]
         (is (false? (config/get-in-config config-service [:debug]))))))
 
   (testing "--debug puts TK in debug mode"
-    (testutils/with-app-with-cli-args app [] ["--config" testutils/empty-config "--debug"]
+    (testutils/with-app-with-cli-args app [] ["--debug"]
       (let [config-service (get-service app :ConfigService)]
         (is (true? (config/get-in-config config-service [:debug]))))))
 

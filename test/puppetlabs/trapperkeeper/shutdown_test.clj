@@ -6,7 +6,7 @@
             [puppetlabs.trapperkeeper.core :as tk]
             [puppetlabs.trapperkeeper.internal :as internal]
             [puppetlabs.trapperkeeper.services :refer [service service-id]]
-            [puppetlabs.trapperkeeper.testutils.bootstrap :refer [bootstrap-services-with-empty-config]]
+            [puppetlabs.trapperkeeper.testutils.bootstrap :refer [bootstrap-services]]
             [puppetlabs.trapperkeeper.testutils.logging :as logging]
             [puppetlabs.kitchensink.testutils.fixtures :refer [with-no-jvm-shutdown-hooks]]
             [schema.test :as schema-test]))
@@ -25,7 +25,7 @@
                                      (stop [this context]
                                            (reset! shutdown-called? true)
                                            context))
-          app               (bootstrap-services-with-empty-config [test-service])]
+          app               (bootstrap-services [test-service])]
       (is (false? @shutdown-called?))
       (internal/shutdown! (app-context app))
       (is (true? @shutdown-called?))))
@@ -41,7 +41,7 @@
                                (stop [this context]
                                      (swap! order conj 2)
                                      context))
-          app         (bootstrap-services-with-empty-config [service1 service2])]
+          app         (bootstrap-services [service1 service2])]
       (is (empty? @order))
       (internal/shutdown! (app-context app))
       (is (= @order [2 1]))))
@@ -55,7 +55,7 @@
           broken-service    (service []
                                      (stop [this context]
                                            (throw (RuntimeException. "dangit"))))
-          app               (bootstrap-services-with-empty-config [test-service broken-service])]
+          app               (bootstrap-services [test-service broken-service])]
       (is (false? @shutdown-called?))
       (logging/with-test-logging
         (internal/shutdown! (app-context app))
@@ -68,7 +68,7 @@
                                      (stop [this context]
                                            (reset! shutdown-called? true)
                                            context))
-          app               (bootstrap-services-with-empty-config [test-service])
+          app               (bootstrap-services [test-service])
           shutdown-svc      (get-service app :ShutdownService)]
       (is (false? @shutdown-called?))
       (internal/request-shutdown shutdown-svc)
@@ -250,7 +250,7 @@
                                                 (shutdown-on-error (service-id this)
                                                                    #(throw (RuntimeException. "uh oh"))
                                                                    (fn [ctxt] (reset! on-error-fn-called? true)))))
-          app                 (bootstrap-services-with-empty-config [broken-service])
+          app                 (bootstrap-services [broken-service])
           test-svc            (get-service app :ShutdownTestServiceWithFn)]
       (is (false? @shutdown-called?))
       (is (false? @on-error-fn-called?))
@@ -269,7 +269,7 @@
                                             (shutdown-on-error (service-id this)
                                                                #(throw (Throwable. "foo"))
                                                                (fn [ctxt] (throw (Throwable. "busted on-error function"))))))
-          app             (bootstrap-services-with-empty-config [broken-service])
+          app             (bootstrap-services [broken-service])
           test-svc        (get-service app :ShutdownTestServiceWithFn)]
       (logging/with-test-logging
         (test-fn test-svc)

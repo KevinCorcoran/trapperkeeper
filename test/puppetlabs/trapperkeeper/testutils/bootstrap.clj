@@ -7,9 +7,6 @@
             [puppetlabs.trapperkeeper.config :as config]
             [puppetlabs.trapperkeeper.internal :as internal]))
 
-(def empty-config "./target/empty.ini")
-(fs/touch empty-config)
-
 (defmacro with-app-with-config
   [app services config & body]
   `(ks-testutils/with-no-jvm-shutdown-hooks
@@ -49,32 +46,31 @@
          (finally
            (tk-app/stop ~app))))))
 
-(defn bootstrap-services-with-empty-config
+(defn bootstrap-services
   [services]
-  (bootstrap-services-with-cli-data services {:config empty-config}))
+  (bootstrap-services-with-cli-data services {}))
 
-(defmacro with-app-with-empty-config
+(defmacro with-app
   [app services & body]
   `(ks-testutils/with-no-jvm-shutdown-hooks
-     (let [~app (bootstrap-services-with-empty-config ~services)]
+     (let [~app (bootstrap-services ~services)]
        (try
          ~@body
          (finally
            (tk-app/stop ~app))))))
 
-(defn bootstrap-with-empty-config
+(defn bootstrap
   ([]
-   (bootstrap-with-empty-config []))
+   (bootstrap []))
   ([other-args]
    (-> other-args
-       (conj "--config" empty-config )
        (internal/parse-cli-args!)
        (tk/boot-with-cli-data)
        (internal/throw-app-error-if-exists!))))
 
 (defn parse-and-bootstrap
   ([bootstrap-config]
-   (parse-and-bootstrap bootstrap-config {:config empty-config}))
+   (parse-and-bootstrap bootstrap-config {}))
   ([bootstrap-config cli-data]
    (-> bootstrap-config
        (bootstrap/parse-bootstrap-config!)

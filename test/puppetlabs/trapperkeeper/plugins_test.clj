@@ -4,7 +4,7 @@
             [puppetlabs.trapperkeeper.plugins :refer :all]
             [puppetlabs.trapperkeeper.core :as trapperkeeper]
             [puppetlabs.trapperkeeper.app :refer [get-service service-graph]]
-            [puppetlabs.trapperkeeper.testutils.bootstrap :refer [bootstrap-with-empty-config]]
+            [puppetlabs.trapperkeeper.testutils.bootstrap :refer [bootstrap]]
             [schema.test :as schema-test]))
 
 (use-fixtures :once schema-test/validate-schemas)
@@ -19,7 +19,7 @@
     (is (thrown-with-msg?
           IllegalArgumentException
           #".*directory.*does not exist.*"
-          (bootstrap-with-empty-config ["--plugins" "/this/does/not/exist"])))))
+          (bootstrap ["--plugins" "/this/does/not/exist"])))))
 
 (deftest test-no-duplicates
   (testing "duplicate test passes on .jar with just a service in it"
@@ -36,7 +36,7 @@
 
 (deftest test-plugin-service
   (testing "TK can load and use service defined in plugin .jar"
-    (let [app (bootstrap-with-empty-config
+    (let [app (bootstrap
                 ["--plugins" "./plugin-test-resources/plugins"
                  "--bootstrap-config" "./dev-resources/bootstrapping/plugin/bootstrap.cfg"])
           service-fn (-> (service-graph app)

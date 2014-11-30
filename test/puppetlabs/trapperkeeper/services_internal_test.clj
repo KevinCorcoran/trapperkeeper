@@ -8,7 +8,7 @@
             [puppetlabs.trapperkeeper.services :refer [service service-map] :as svcs]
             [puppetlabs.trapperkeeper.services-internal :as si]
             [puppetlabs.trapperkeeper.testutils.bootstrap :refer
-             [with-app-with-empty-config]]))
+             [with-app]]))
 
 (use-fixtures :once schema-test/validate-schemas)
 
@@ -179,7 +179,7 @@
 (deftest explicit-service-symbol-test
   (testing "can explicitly pass `service` a service symbol via internal API"
     (let [empty-service (service {:service-symbol foo/bar} EmptyService [])]
-      (with-app-with-empty-config app [empty-service]
+      (with-app app [empty-service]
         (let [svc (app/get-service app :EmptyService)]
           (is (= :EmptyService (svcs/service-id svc)))
           (is (= (symbol "foo" "bar") (svcs/service-symbol svc))))))))

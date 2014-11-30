@@ -9,7 +9,7 @@
             [puppetlabs.trapperkeeper.app :refer [get-service]]
             [puppetlabs.trapperkeeper.bootstrap :refer :all]
             [puppetlabs.trapperkeeper.testutils.logging :refer [with-test-logging]]
-            [puppetlabs.trapperkeeper.testutils.bootstrap :refer [bootstrap-with-empty-config parse-and-bootstrap]]
+            [puppetlabs.trapperkeeper.testutils.bootstrap :refer [bootstrap parse-and-bootstrap]]
             [puppetlabs.trapperkeeper.examples.bootstrapping.test-services :refer [test-fn hello-world]]
             [schema.test :as schema-test]))
 
@@ -34,7 +34,7 @@ puppetlabs.trapperkeeper.examples.bootstrapping.test-services/hello-world-servic
     (with-additional-classpath-entries ["./dev-resources/bootstrapping/classpath"]
       (testing "Looks for bootstrap config on classpath (dev-resources)"
         (with-test-logging
-          (let [app             (bootstrap-with-empty-config)
+          (let [app             (bootstrap)
                 test-svc        (get-service app :TestService)
                 hello-world-svc (get-service app :HelloWorldService)]
             (is (logged?
@@ -50,7 +50,7 @@ puppetlabs.trapperkeeper.examples.bootstrapping.test-services/hello-world-servic
               "user.dir"
               (.getAbsolutePath (file "./dev-resources/bootstrapping/cwd")))
             (with-test-logging
-              (let [app             (bootstrap-with-empty-config)
+              (let [app             (bootstrap)
                     test-svc        (get-service app :TestService)
                     hello-world-svc (get-service app :HelloWorldService)]
                 (is (logged?
@@ -62,7 +62,7 @@ puppetlabs.trapperkeeper.examples.bootstrapping.test-services/hello-world-servic
 
       (testing "Gives precedence to bootstrap config specified as CLI arg"
         (with-test-logging
-            (let [app             (bootstrap-with-empty-config ["--bootstrap-config" "./dev-resources/bootstrapping/cli/bootstrap.cfg"])
+            (let [app             (bootstrap ["--bootstrap-config" "./dev-resources/bootstrapping/cli/bootstrap.cfg"])
                   test-svc        (get-service app :TestService)
                   hello-world-svc (get-service app :HelloWorldService)]
               (is (logged?
@@ -77,16 +77,16 @@ puppetlabs.trapperkeeper.examples.bootstrapping.test-services/hello-world-servic
         (is (thrown-with-msg?
               IllegalArgumentException
               #"Specified bootstrap config file does not exist: '.*non-existent-bootstrap.cfg'"
-              (bootstrap-with-empty-config ["--bootstrap-config" cfg-path])))))
+              (bootstrap ["--bootstrap-config" cfg-path])))))
 
     (testing "No bootstrap config found"
       (is (thrown-with-msg?
             IllegalStateException
             #"Unable to find bootstrap.cfg file via --bootstrap-config command line argument, current working directory, or on classpath"
-            (bootstrap-with-empty-config)))
+            (bootstrap)))
       (let [got-expected-exception (atom false)]
         (try+
-          (bootstrap-with-empty-config ["--bootstrap-config" nil])
+          (bootstrap ["--bootstrap-config" nil])
           (catch map? m
             (is (contains? m :type))
             (is (= :cli-error (without-ns (:type m))))
@@ -159,7 +159,7 @@ puppetlabs.trapperkeeper.examples.bootstrapping.test-services/foo-test-service ;
 (deftest bootstrap-path-with-spaces
   (testing "Ensure that a bootstrap config can be loaded with a path that contains spaces"
     (with-test-logging
-      (let [app             (bootstrap-with-empty-config
+      (let [app             (bootstrap
                                ["--bootstrap-config" "./dev-resources/bootstrapping/cli/path with spaces/bootstrap.cfg"])
             test-svc        (get-service app :TestService)
             hello-world-svc (get-service app :HelloWorldService)]
@@ -175,4 +175,4 @@ puppetlabs.trapperkeeper.examples.bootstrapping.test-services/foo-test-service ;
           bootstrap-url (str "jar:file:///" (.getAbsolutePath jar) "!/bootstrap.cfg")]
       ;; just test that this bootstrap config file can be read successfully
       ;; (ie, this does not throw an exception)
-      (bootstrap-with-empty-config ["--bootstrap-config" bootstrap-url]))))
+      (bootstrap ["--bootstrap-config" bootstrap-url]))))
