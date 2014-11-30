@@ -2,8 +2,6 @@
   (:require [clojure.tools.macro :refer [name-with-attributes]]
             [clojure.set :refer [difference]]
             [plumbing.core :refer [fnk]]
-            [schema.core :as schema]
-            [plumbing.graph :as g]
             [puppetlabs.kitchensink.core :refer [select-values keyset]]
             [puppetlabs.trapperkeeper.services-internal :as si]))
 
@@ -16,10 +14,24 @@
   (start [this context] "Start the service, given a context map.
                          Must return the (possibly modified) context map.")
   (stop [this context] "Stop the service, given a context map.
-                         Must return the (possibly modified) context map."))
+                         Must return the (possibly modified) context map.")
+
+  ; TODO, um, this has nothing to do with lifecycle.
+  ; TODO would nice for this to just be a def instead of a function that takes context and instance
+  ; TODO takes context for unifomity/compat, but doesn't need it.
+  ; TODO update docs, not using schema ATM.
+  ; TODO rename to config-schema or something like that
+  (required-config [this context] "Returns a schema which describes the service's
+                                   required configuration data, without which the
+                                   service cannot operate.  Implementations of
+                                   this function should be free of side-effects.")
+  ; TODO add display name / label
+  ; TODO add error message for required config - perhaps as a part of the return value from 'required-config', or as a separate function
+
+  )
 
 (defprotocol Service
-  "Common functions available to all services"
+  "Functions available on all services"
   (service-id [this] "An identifier for the service")
   (service-context [this] "Returns the context map for this service")
   (get-service [this service-id] "Returns the service with the given service id")

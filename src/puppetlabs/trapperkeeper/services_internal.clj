@@ -1,7 +1,7 @@
 (ns puppetlabs.trapperkeeper.services-internal
   (:import (clojure.lang IFn))
   (:require [clojure.walk :refer [postwalk]]
-            [clojure.set :refer [difference union intersection]]
+            [clojure.set :as set]
             [plumbing.core :refer [fnk]]
             [schema.core :as schema]
             [puppetlabs.kitchensink.core :as ks]))
@@ -142,7 +142,7 @@
   {:pre [(symbol? service-protocol-sym)
          (every? symbol? service-fn-names)
          (every? symbol? lifecycle-fn-names)]}
-  (let [collisions (intersection (set (map name service-fn-names))
+  (let [collisions (set/intersection (set (map name service-fn-names))
                                  (set (map name lifecycle-fn-names)))]
     (if-not (empty? collisions)
       (throw (IllegalArgumentException.
@@ -166,7 +166,7 @@
              (format
                "Service attempts to define function '%s', but does not provide protocol"
                (name (first provided-fns))))))
-  (let [extras (difference provided-fns service-fns)]
+  (let [extras (set/difference provided-fns service-fns)]
     (when-not (empty? extras)
       (throw (IllegalArgumentException.
                (format
@@ -212,7 +212,7 @@
          (fns-map? fns-map)]
    :post [(map? %)
           (= (ks/keyset %)
-             (union (ks/keyset fns-map)
+             (set/union (ks/keyset fns-map)
                     (set (map keyword lifecycle-fn-names))))]}
   (reduce add-default-lifecycle-fn fns-map lifecycle-fn-names))
 
@@ -279,7 +279,7 @@
          (every? seq? fns)]
    :post [(fns-map? %)
           (= (ks/keyset %)
-             (union (set (map (comp ks/without-ns keyword) service-fn-names))
+             (set/union (set (map (comp ks/without-ns keyword) service-fn-names))
                     (set (map keyword lifecycle-fn-names))))]}
 
   (when service-protocol-sym
@@ -306,11 +306,11 @@
                        {}
                        fns)
                   (add-default-lifecycle-fns lifecycle-fn-names))]
-    (validate-provided-fns!
-      service-protocol-sym
-      (set (map (comp ks/without-ns keyword) service-fn-names))
-      (difference (ks/keyset fns-map)
-                  (set (map (comp ks/without-ns keyword) lifecycle-fn-names))))
+    (let [service-fns (set (map (comp ks/without-ns keyword) service-fn-names))
+          provided-fns (set/difference
+                         (ks/keyset fns-map)
+                         (set (map (comp ks/without-ns keyword) lifecycle-fn-names)))]
+      (validate-provided-fns! service-protocol-sym service-fns provided-fns))
     (when service-protocol-sym
       (validate-required-fns! service-protocol-sym service-fn-names fns-map))
     fns-map))

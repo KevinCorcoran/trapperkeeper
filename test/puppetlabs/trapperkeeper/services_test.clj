@@ -1,13 +1,15 @@
 (ns puppetlabs.trapperkeeper.services-test
+  (:import (clojure.lang ExceptionInfo))
   (:require [clojure.test :refer :all]
             [puppetlabs.trapperkeeper.services :refer
-                [defservice service] :as svcs]
+             [defservice service] :as svcs]
             [puppetlabs.trapperkeeper.app :as app]
-            [puppetlabs.trapperkeeper.testutils.bootstrap :refer
-                [bootstrap-services
-                 with-app]]
+            [puppetlabs.trapperkeeper.internal :as internal]
+            [puppetlabs.trapperkeeper.testutils.bootstrap :as bootstrap-testutils]
+            [puppetlabs.kitchensink.testutils.fixtures :refer [with-no-jvm-shutdown-hooks]]
             [schema.test :as schema-test]
-            [puppetlabs.kitchensink.testutils.fixtures :refer [with-no-jvm-shutdown-hooks]]))
+            [slingshot.slingshot :refer [try+]]
+            [schema.core :as schema]))
 
 (use-fixtures :once schema-test/validate-schemas with-no-jvm-shutdown-hooks)
 
@@ -27,7 +29,7 @@
   (testing "creates a service definition"
     (is (satisfies? svcs/ServiceDefinition hello-service)))
 
-  (let [app (bootstrap-services [hello-service])]
+  (let [app (bootstrap-testutils/bootstrap-services [hello-service])]
     (testing "app satisfies protocol"
       (is (satisfies? app/TrapperkeeperApp app)))
 
@@ -54,7 +56,7 @@
     (let [service1  (service Service1
                       []
                       (service1-fn [this] "hi"))
-          app       (bootstrap-services [service1])]
+          app       (bootstrap-testutils/bootstrap-services [service1])]
       (is (not (nil? app)))))
 
   (testing "life cycle functions are called in the correct order"
@@ -75,12 +77,12 @@
                        (init [this context] (lc-fn context :init-service3))
                        (start [this context] (lc-fn context :start-service3))
                        (service3-fn [this] (lc-fn nil :service3-fn)))]
-      (bootstrap-services [service1 service3 service2])
+      (bootstrap-testutils/bootstrap-services [service1 service3 service2])
       (is (= [:init-service1 :init-service2 :init-service3
               :start-service1 :start-service2 :start-service3]
              @call-seq))
       (reset! call-seq [])
-      (bootstrap-services [service3 service2 service1])
+      (bootstrap-testutils/bootstrap-services [service3 service2 service1])
       (is (= [:init-service1 :init-service2 :init-service3
               :start-service1 :start-service2 :start-service3]
              @call-seq))))
@@ -99,7 +101,7 @@
                                   (swap! test-context assoc :stop-service-id (svcs/service-id this))
                                   context)
                             (service1-fn [this] nil))]
-      (with-app app [service1]
+      (bootstrap-testutils/with-app app [service1]
         ;; no-op; we just want the app to start up and shut down
         )
       (is (= :Service1 (:init-service-id @test-context)))
@@ -114,7 +116,7 @@
           service2 (service Service2
                             [[:Service1 service1-fn]]
                             (service2-fn [this] (str "HELLO " (service1-fn))))
-          app (bootstrap-services [service1 service2])
+          app (bootstrap-testutils/bootstrap-services [service1 service2])
           s2  (app/get-service app :Service2)]
       (is (= "HELLO FOO!" (service2-fn s2)))))
 
@@ -128,7 +130,7 @@
                                   (let [s1 (svcs/get-service this :Service1)]
                                     (assoc context :s1 s1)))
                             (service2-fn [this] ((svcs/service-context this) :s1)))
-          app               (bootstrap-services [service1 service2])
+          app               (bootstrap-testutils/bootstrap-services [service1 service2])
           s2                (app/get-service app :Service2)
           s1                (service2-fn s2)]
       (is (satisfies? Service1 s1))
@@ -138,7 +140,7 @@
     (let [service1 (service Service1
                             []
                             (service1-fn [this] (svcs/get-service this :NonExistent)))
-          app               (bootstrap-services [service1])
+          app               (bootstrap-testutils/bootstrap-services [service1])
           s1                (app/get-service app :Service1)]
       (is (thrown-with-msg?
             IllegalArgumentException
@@ -153,7 +155,7 @@
                             [[:Service1 service1-fn]]
                             (init [this context] (service1-fn) context)
                             (service2-fn [this] "service2"))
-          app (bootstrap-services [service1 service2])
+          app (bootstrap-testutils/bootstrap-services [service1 service2])
           s2  (app/get-service app :Service2)]
       (is (= "service2" (service2-fn s2))))))
 
@@ -167,7 +169,7 @@
                       []
                       (service4-fn1 [this] "foo!")
                       (service4-fn2 [this] (str (service4-fn1 this) " bar!")))
-          app       (bootstrap-services [service4])
+          app       (bootstrap-testutils/bootstrap-services [service4])
           s4        (app/get-service app :Service4)]
       (is (= "foo! bar!" (service4-fn2 s4))))))
 
@@ -190,7 +192,7 @@
           (re-pattern (str "Lifecycle function 'init' for service "
                            "'puppetlabs.trapperkeeper.services-test/service1'"
                            " must return a context map \\(got: \"hi\"\\)"))
-          (bootstrap-services [service1]))
+          (bootstrap-testutils/bootstrap-services [service1]))
         "Unexpected shutdown reason for bootstrap")
     (is (thrown-with-msg?
           IllegalStateException
@@ -198,7 +200,7 @@
                            "'puppetlabs.trapperkeeper.services-test/service1-alt'"
                            " must return a context map "
                            "\\(got: \"hi\"\\)"))
-          (bootstrap-services [service1-alt]))
+          (bootstrap-testutils/bootstrap-services [service1-alt]))
         "Unexpected shutdown reason for bootstrap"))
 
   (testing "lifecycle error works if service has no service symbol"
@@ -210,7 +212,7 @@
             IllegalStateException
             (re-pattern (str "Lifecycle function 'init' for service ':Service1'"
                              " must return a context map \\(got: \"hi\"\\)"))
-            (bootstrap-services [service1]))
+            (bootstrap-testutils/bootstrap-services [service1]))
           "Unexpected shutdown reason for bootstrap"))
     (let [service1 (service Service1
                             []
@@ -222,7 +224,7 @@
             (re-pattern (str "Lifecycle function 'start' for service "
                              "':Service1' must return a context map "
                              "\\(got: \"hi\"\\)"))
-            (bootstrap-services [service1]))
+            (bootstrap-testutils/bootstrap-services [service1]))
           "Unexpected shutdown reason for bootstrap")))
 
   (testing "context should be available in subsequent lifecycle functions"
@@ -232,7 +234,7 @@
                             (init [this context] (assoc context :foo :bar))
                             (start [this context] (reset! start-context context))
                             (service1-fn [this] "hi"))]
-      (bootstrap-services [service1])
+      (bootstrap-testutils/bootstrap-services [service1])
       (is (= {:foo :bar} @start-context))))
 
   (testing "context should be accessible in service functions"
@@ -241,7 +243,7 @@
                             []
                             (init [this context] (assoc context :foo :bar))
                             (service1-fn [this] (reset! sfn-context (svcs/service-context this))))
-          app (bootstrap-services [service1])
+          app (bootstrap-testutils/bootstrap-services [service1])
           s1  (app/get-service app :Service1)]
       (service1-fn s1)
       (is (= {:foo :bar} @sfn-context))
@@ -255,7 +257,7 @@
           service2 (service Service2
                             [[:Service1 service1-fn]]
                             (service2-fn [this] (service1-fn)))
-          app (bootstrap-services [service1 service2])
+          app (bootstrap-testutils/bootstrap-services [service1 service2])
           s2  (app/get-service app :Service2)]
       (is (= :bar (service2-fn s2)))))
 
@@ -265,7 +267,7 @@
                             (init [this context] (assoc context :foo :bar))
                             (service4-fn1 [this] ((svcs/service-context this) :foo))
                             (service4-fn2 [this] (service4-fn1 this)))
-          app (bootstrap-services [service4])
+          app (bootstrap-testutils/bootstrap-services [service4])
           s4  (app/get-service app :Service4)]
       (is (= :bar (service4-fn2 s4)))))
 
@@ -280,18 +282,18 @@
                             (start [this context] (reset! s2-context (svcs/service-context this)))
                             (service2-fn [this] "hi"))
 
-          app (bootstrap-services [service1 service2])]
+          app (bootstrap-testutils/bootstrap-services [service1 service2])]
       (is (= {} @s2-context)))))
 
 (deftest service-symbol-test
   (testing "service defined via `defservice` has a service symbol"
-    (with-app app [hello-service]
+    (bootstrap-testutils/with-app app [hello-service]
       (let [svc (app/get-service app :HelloService)]
         (is (= (symbol "puppetlabs.trapperkeeper.services-test" "hello-service")
                (svcs/service-symbol svc))))))
   (testing "service defined via `service` does not have a service symbol"
     (let [empty-svc (service EmptyService [])]
-      (with-app app [empty-svc]
+      (bootstrap-testutils/with-app app [empty-svc]
         (let [svc (app/get-service app :EmptyService)]
           (is (= :EmptyService (svcs/service-id svc)))
           (is (nil? (svcs/service-symbol svc))))))))
@@ -299,7 +301,7 @@
 (deftest get-services-test
   (testing "get-services should return all services"
     (let [empty-service (service EmptyService [])]
-      (with-app app [empty-service hello-service]
+      (bootstrap-testutils/with-app app [empty-service hello-service]
         (let [empty (app/get-service app :EmptyService)
               hello (app/get-service app :HelloService)]
           (doseq [s [empty hello]]
@@ -320,7 +322,7 @@
                                    (swap! call-seq conj :start)
                                    (is (= context {:foo :bar}))
                                    context))]
-      (bootstrap-services [service0])
+      (bootstrap-testutils/bootstrap-services [service0])
       (is (= [:init :start] @call-seq))))
 
   (testing "minimal services can have dependencies"
@@ -332,7 +334,7 @@
                             (init [this context]
                                   (reset! result (service1-fn))
                                   context))]
-          (bootstrap-services [service1 service0])
+          (bootstrap-testutils/bootstrap-services [service1 service0])
           (is (= "hi" @result)))))
 
 (defprotocol MultiArityService
@@ -348,7 +350,7 @@
                                [[:MultiArityService foo]]
                                (service1-fn [this]
                                             [(foo 5) (foo 3 6)]))
-          app         (bootstrap-services [ma-service service1])
+          app         (bootstrap-testutils/bootstrap-services [ma-service service1])
           mas         (app/get-service app :MultiArityService)
           s1          (app/get-service app :Service1)]
       (is (= 3 (foo mas 3)))
@@ -366,3 +368,70 @@
                           (service1-fn
                             "This is an example of an invalid docstring"
                             [this] nil)))))))
+
+(deftest required-config-1
+  (testing "When TK is booting, if the required configuration for a service is
+            missing, an exception is thrown."
+    (let [my-service (service []
+                              (required-config [this context]
+                                               {:some-required-config String}))]
+      (try
+        (internal/boot-services* [my-service] {})
+        (is false "Expected Exception was not thrown.")
+        (catch Throwable t
+          (is (instance? ExceptionInfo t))
+          (let [error-data (:object (.getData t))]
+            (is (not (schema/check internal/MissingRequiredConfigError error-data)))
+            (is (= 1 (count (:errors error-data))))
+            (let [error (first (:errors error-data))]
+
+              (testing "When the service does not implement a protocol,
+                    the name of the service is simply the namespace
+                    in which it's defined."
+                (is (re-matches #"puppetlabs.trapperkeeper.services_test"
+                                (:service-name error)))
+                (is (= (:detail error) {:some-required-config 'missing-required-key})))
+
+              (testing "A user-friendly error message is generated from the error"
+                (is (= (internal/missing-required-config-error->message error-data)
+                       (str "The configuration data is insufficient for the service defined in namespace "
+                            "'puppetlabs.trapperkeeper.services_test'.\n"
+                            ; TODO pretty-print schema?
+                            ; TODO (map name keys)
+                            ; TODO no fully-qualified classnames
+                            ; TODO order-dependent, das no bueno
+                            ; TODO UGH!  s/class/
+                            "Key 'some-required-config' is missing - the expected value for this key should conform to schema class java.lang.String")))))))))))
+
+(deftest required-config-2
+  (testing "More complex config schema."
+    (let [my-service (service []
+                              (required-config [this context]
+                                               {:a {:b1 String
+                                                    :b2 String}}))]
+      (try
+        (internal/boot-services* [my-service] {})
+        (is false "Expected Exception was not thrown.")
+        (catch Throwable t
+          (is (instance? ExceptionInfo t) t)
+          (let [error-data (:object (.getData t))]
+            (is (not (schema/check internal/MissingRequiredConfigError error-data)))
+            (is (= 1 (count (:errors error-data))))
+            (let [error (first (:errors error-data))]
+
+              (testing "When the service does not implement a protocol,
+                       the name of the service is simply the namespace
+                       in which it's defined."
+                (is (re-matches #"puppetlabs.trapperkeeper.services_test"
+                                (:service-name error)))
+                (is (= (:detail error) {:a 'missing-required-key})))
+
+              (testing "A user-friendly error message is generated from the error"
+                (is (= (internal/missing-required-config-error->message error-data)
+                       (str "The configuration data is insufficient for the service defined in namespace "
+                            "'puppetlabs.trapperkeeper.services_test'.\n"
+                            ; TODO pretty-print schema?
+                            ; TODO (map name keys)
+                            ; TODO no fully-qualified classnames
+                            ; TODO order-dependent, das no bueno
+                            "Key 'a' is missing - the expected value for this key should conform to schema {:b2 java.lang.String, :b1 java.lang.String}")))))))))))

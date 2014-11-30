@@ -151,7 +151,7 @@
   "Launches the trapperkeeper framework. This function blocks until
   trapperkeeper is shut down. This may be called directly, but is also called by
   `puppetlabs.trapperkeeper.core/-main` if you use `puppetlabs.trapperkeeper.core`
-  as the `:main` namespace in your leinengen project."
+  as the `:main` namespace in a leiningen project."
   [& args]
   {:pre [((some-fn sequential? nil?) args)
          (every? string? args)]}
@@ -159,6 +159,9 @@
     (-> (or args '())
         (internal/parse-cli-args!)
         (run))
+    (catch internal/missing-required-config-error? e
+      (binding [*out* *err*]
+        (println (internal/missing-required-config-error->message e))))
     (catch map? m
       (case (without-ns (:type m))
         :cli-error ((println (:message m))

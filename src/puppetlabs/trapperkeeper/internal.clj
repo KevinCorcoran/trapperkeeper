@@ -1,14 +1,18 @@
 (ns puppetlabs.trapperkeeper.internal
-  (:import (clojure.lang Atom ExceptionInfo))
+  (:import (clojure.lang Atom ExceptionInfo Keyword)
+           (java.util Map))
   (:require [clojure.tools.logging :as log]
-            [plumbing.map]
             [plumbing.graph :as g]
             [plumbing.fnk.pfnk :refer [input-schema output-schema fn->fnk]]
+            [schema.core :as schema]
+            [slingshot.slingshot :refer [throw+]]
             [puppetlabs.kitchensink.core :refer [add-shutdown-hook! boolean? cli!]]
             [puppetlabs.trapperkeeper.config :refer [config-service]]
             [puppetlabs.trapperkeeper.app :as a]
             [puppetlabs.trapperkeeper.services :as s]
-            [puppetlabs.kitchensink.core :as ks]))
+            [puppetlabs.kitchensink.core :as ks]
+            [clojure.set :as set]
+            [clojure.string :as string]))
 
 (defn service-graph?
   "Predicate that tests whether or not the argument is a valid trapperkeeper
@@ -143,21 +147,21 @@
                        error message if an error occurs.
   * service-id: the id of the service that the lifecycle fn is being run on
   * s: the service that the lifecycle fn is being run on"
-  [app-context lifecycle-fn lifecycle-fn-name service-id s]
+  [app-context lifecycle-fn lifecycle-fn-name service-id service-instance]
   {:pre [(instance? Atom app-context)
          (ifn? lifecycle-fn)
          (string? lifecycle-fn-name)
          (keyword? service-id)
-         (satisfies? s/Lifecycle s)]}
+         (satisfies? s/Lifecycle service-instance)]}
   (let [;; call the lifecycle function on the service, and keep a reference
         ;; to the updated context map that it returns
-        updated-ctxt  (lifecycle-fn s (get @app-context service-id {}))]
+        updated-ctxt  (lifecycle-fn service-instance (get @app-context service-id {}))]
     (if-not (map? updated-ctxt)
       (throw (IllegalStateException.
                (format
                  "Lifecycle function '%s' for service '%s' must return a context map (got: %s)"
                  lifecycle-fn-name
-                 (or (s/service-symbol s) service-id)
+                 (or (s/service-symbol service-instance) service-id)
                  (pr-str updated-ctxt)))))
     ;; store the updated service context map in the application context atom
     (swap! app-context assoc service-id updated-ctxt)))
@@ -178,12 +182,12 @@
                       called first.)"
   [app-context lifecycle-fn lifecycle-fn-name ordered-services]
   (try
-    (doseq [[service-id s] ordered-services]
+    (doseq [[service-id service-instance] ordered-services]
       (run-lifecycle-fn! app-context
                          lifecycle-fn
                          lifecycle-fn-name
                          service-id
-                         s))
+                         service-instance))
     (catch Throwable t
       (log/errorf t "Error during service %s!!!" lifecycle-fn-name)
       (throw t))))
@@ -317,9 +321,9 @@
            (and (map? ctxt)
                 (ordered-services? (ctxt :ordered-services))))]}
   (log/info "Beginning shutdown sequence")
-  (doseq [[service-id s] (reverse (@app-context :ordered-services))]
+  (doseq [[service-id service-instance] (reverse (@app-context :ordered-services))]
     (try
-      (run-lifecycle-fn! app-context s/stop "stop" service-id s)
+      (run-lifecycle-fn! app-context s/stop "stop" service-id service-instance)
       (catch Exception e
         (log/error e "Encountered error during shutdown sequence"))))
   (log/info "Finished shutdown sequence"))
@@ -452,6 +456,67 @@
         (shutdown! app-context)
         this))))
 
+(def MissingRequiredConfigError
+  {:type (schema/eq :trapperkeeper/invalid-config)
+   :errors [{:service-name String
+             :schema Map
+             :detail schema/Any}]})
+
+(defn missing-required-config-error?
+  [x]
+  (not (schema/check MissingRequiredConfigError x)))
+
+(schema/defn missing-required-config-error->message :- String
+  [e :- MissingRequiredConfigError]
+  (if (= 1 (count (:errors e)))
+    (let [error (first (:errors e))
+          namespace (:service-name error)
+          detail (:detail error)
+          schema (:schema error)
+          missing-key (first (keys (ks/filter-map (fn [k v] (= v 'missing-required-key)) detail)))
+          schema (get schema missing-key)          ]
+      (str "The configuration data is insufficient for the service defined in namespace '"
+           namespace
+           "'.\nKey '"
+           (name missing-key)
+           "' is missing - the expected value for this key should conform to schema "
+           schema))
+    (throw (Exception. "NOT IMPLEMENTED"))))
+
+(schema/defn validate-config!
+  "Throws an Exception when some required is missing.  The Exception will be
+  an instance of ExceptionInfo, and the data contained in the Exception will
+  conform to the 'MissingRequiredConfigError' schema."
+  [config :- Map
+
+   ; TODO add schema for this?
+   app-context :- Map]
+  ;(clojure.pprint/pprint @app-context)
+  ;(clojure.pprint/pprint (map first (:ordered-services @app-context)))
+  ;(clojure.pprint/pprint (map (comp s/service-id second) (:ordered-services @app-context)))
+  ;(clojure.pprint/pprint (map (comp #(.toString %) second) (:ordered-services @app-context)))
+
+  (let [service->error-message (fn [service]
+                                 ; TODO this is pretty awful
+                                 (first (clojure.string/split (.toString service) #"\$")))
+        f (fn [acc service-pair]
+            (let [
+                  ; TODO Think I can use destructuring here
+                  service-id (first service-pair)
+                  service (second service-pair)
+
+                  required-config (s/required-config service nil)
+                  config-error (when required-config (schema/check required-config config))]
+              (if config-error
+                (conj acc {:service-name (service->error-message service)
+                           :schema required-config
+                           :detail config-error})
+                acc)))
+        failures (reduce f '() (:ordered-services app-context))]
+    (when-not (empty? failures)
+      (throw+ {:type :trapperkeeper/invalid-config
+               :errors failures}))))
+
 (defn boot-services*
   "Given the services to run and the map of configuration data, create the
   TrapperkeeperApp and boot the services.  Returns the TrapperkeeperApp."
@@ -468,13 +533,15 @@
                                   (catch Throwable t
                                     (log/error t "Error during app buildup!")
                                     (throw t)))]
-      (try
-        (a/init app)
-        (a/start app)
-        (catch Throwable t
-          (deliver shutdown-reason-promise {:cause :service-error
-                                            :error t})))
-      app)
-    )
-
-
+    (validate-config! config-data @(a/app-context app))
+    (try
+      (a/init app)
+      (a/start app)
+      (catch Throwable t
+        ;; Deliver a shutdown reason to the promise.  This will be read later,
+        ;; on the same thread, and Trapperkeeper will immediately shut down.
+        ;; This was done in the interest of consolidating error handling
+        ;; logic around how to cleanly shut down TK.
+        (deliver shutdown-reason-promise {:cause :service-error
+                                          :error t})))
+    app))
