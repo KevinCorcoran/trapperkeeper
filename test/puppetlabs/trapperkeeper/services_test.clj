@@ -401,7 +401,7 @@
                             ; TODO no fully-qualified classnames
                             ; TODO order-dependent, das no bueno
                             ; TODO UGH!  s/class/
-                            "Key 'some-required-config' is missing - the expected value for this key should conform to schema class java.lang.String")))))))))))
+                            "Key 'some-required-config' is missing - the expected value for this key should conform to schema {:some-required-config String}")))))))))))
 
 (deftest required-config-2
   (testing "More complex config schema."

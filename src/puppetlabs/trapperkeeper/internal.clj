@@ -487,6 +487,17 @@
            schema))
     (throw (Exception. "NOT IMPLEMENTED"))))
 
+(def RequiredConfigSchema
+  "A meta-schema which defines what kind of schemas are can be returned from
+  'required-config'.  The schema must be a map, and the values of the map must be
+  either an atomic value (string, number, or true/false), a nested schema, or a
+  list of values or nested schemas."
+  (let [Value (schema/either String Number Boolean)]
+    {Keyword (schema/either
+               Value
+               [(schema/either Value (schema/recursive #'MetaSchema))]
+               (schema/recursive #'MetaSchema))}))
+
 (schema/defn validate-config!
   "Throws an Exception when some required configuration data is missing.
   The Exception will be an instance of ExceptionInfo, and the data contained in
