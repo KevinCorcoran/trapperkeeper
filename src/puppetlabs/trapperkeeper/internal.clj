@@ -474,7 +474,11 @@
           detail (:detail error)
           schema (:schema error)
           missing-key (first (keys (ks/filter-map (fn [k v] (= v 'missing-required-key)) detail)))
-          schema (get schema missing-key)          ]
+
+          ; TODO what the fuck is this shit?  i know it was here for a reason
+          ;schema (get schema missing-key)
+          ;
+          ]
       (str "The configuration data is insufficient for the service defined in namespace '"
            namespace
            "'.\nKey '"
@@ -484,9 +488,9 @@
     (throw (Exception. "NOT IMPLEMENTED"))))
 
 (schema/defn validate-config!
-  "Throws an Exception when some required is missing.  The Exception will be
-  an instance of ExceptionInfo, and the data contained in the Exception will
-  conform to the 'MissingRequiredConfigError' schema."
+  "Throws an Exception when some required configuration data is missing.
+  The Exception will be an instance of ExceptionInfo, and the data contained in
+  the Exception will conform to the 'MissingRequiredConfigError' schema."
   [config :- Map
 
    ; TODO add schema for this?
