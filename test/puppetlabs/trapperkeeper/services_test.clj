@@ -377,6 +377,8 @@
                                                {:some-required-config String}))]
       (try
         (internal/boot-services* [my-service] {})
+        ; TODO sometimes, but not always, this exception is not thrown.
+        ; race condition?  how is this possible???
         (is false "Expected Exception was not thrown.")
         (catch Throwable t
           (is (instance? ExceptionInfo t))
@@ -400,8 +402,7 @@
                             ; TODO (map name keys)
                             ; TODO no fully-qualified classnames
                             ; TODO order-dependent, das no bueno
-                            ; TODO UGH!  s/class/
-                            "Key 'some-required-config' is missing - the expected value for this key should conform to schema {:some-required-config String}")))))))))))
+                            "Key 'some-required-config' is missing - the expected value for this key should conform to schema {:some-required-config java.lang.String}")))))))))))
 
 (deftest required-config-2
   (testing "More complex config schema."

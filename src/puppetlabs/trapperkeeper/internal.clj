@@ -487,13 +487,14 @@
            schema))
     (throw (Exception. "NOT IMPLEMENTED"))))
 
+; TODO what about sets?
 ; TODO this is API of sorts, should go into a different namespace, probably 'services'
 (def MetaSchema
   "A meta-schema which defines what kind of schemas are can be returned from
   'required-config'.  The schema must be a map, and the values of the map must be
   either an atomic value (string, number, or true/false), a nested schema, or a
   list of values or nested schemas."
-  (let [Value (schema/either String Number Boolean)]
+  (let [Value (schema/eq String)]
     {Keyword (schema/either
                Value
                [(schema/either Value (schema/recursive #'MetaSchema))]
@@ -507,11 +508,6 @@
 
    ; TODO add schema for this?
    app-context :- Map]
-  ;(clojure.pprint/pprint @app-context)
-  ;(clojure.pprint/pprint (map first (:ordered-services @app-context)))
-  ;(clojure.pprint/pprint (map (comp s/service-id second) (:ordered-services @app-context)))
-  ;(clojure.pprint/pprint (map (comp #(.toString %) second) (:ordered-services @app-context)))
-
   (let [service->error-message (fn [service]
                                  ; TODO this is pretty awful
                                  (first (clojure.string/split (.toString service) #"\$")))
