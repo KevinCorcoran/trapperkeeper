@@ -487,7 +487,8 @@
            schema))
     (throw (Exception. "NOT IMPLEMENTED"))))
 
-(def RequiredConfigSchema
+; TODO this is API of sorts, should go into a different namespace, probably 'services'
+(def MetaSchema
   "A meta-schema which defines what kind of schemas are can be returned from
   'required-config'.  The schema must be a map, and the values of the map must be
   either an atomic value (string, number, or true/false), a nested schema, or a
@@ -520,13 +521,20 @@
                   service-id (first service-pair)
                   service (second service-pair)
 
-                  required-config (s/required-config service nil)
-                  config-error (when required-config (schema/check required-config config))]
-              (if config-error
-                (conj acc {:service-name (service->error-message service)
-                           :schema required-config
-                           :detail config-error})
-                acc)))
+                  required-config (s/required-config service nil)]
+              (when required-config
+                (when (schema/check MetaSchema required-config)
+                  (throw (Exception. (str
+                                       "The 'required-config' schema defined by service "
+                                       service-id
+                                       " is invalid.  It must conform to the schema described by "
+                                       #'MetaSchema))))
+                (let [config-error (schema/check required-config config)]
+                  (if config-error
+                    (conj acc {:service-name (service->error-message service)
+                               :schema       required-config
+                               :detail       config-error})
+                    acc)))))
         failures (reduce f '() (:ordered-services app-context))]
     (when-not (empty? failures)
       (throw+ {:type :trapperkeeper/invalid-config

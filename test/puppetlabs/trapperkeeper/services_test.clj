@@ -435,3 +435,16 @@
                             ; TODO no fully-qualified classnames
                             ; TODO order-dependent, das no bueno
                             "Key 'a' is missing - the expected value for this key should conform to schema {:b2 java.lang.String, :b1 java.lang.String}")))))))))))
+
+(deftest invalid-required-config
+  (testing "A service whose 'required-config' value is invalid"
+    (let [my-service (service []
+                              (required-config [this context]
+                                               Object))
+          expected-error (str "The 'required-config' schema defined by service .*"
+                              " is invalid.  It must conform to the schema " "described by "
+                              "#'puppetlabs.trapperkeeper.internal/MetaSchema")]
+      (is (thrown-with-msg?
+            Exception
+            (re-pattern expected-error)
+            (internal/boot-services* [my-service] {}))))))

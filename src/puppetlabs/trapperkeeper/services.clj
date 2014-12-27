@@ -24,7 +24,9 @@
   (required-config [this context] "Returns a schema which describes the service's
                                    required configuration data, without which the
                                    service cannot operate.  Implementations of
-                                   this function should be free of side-effects.")
+                                   this function should be free of side-effects.
+                                   The schema returned by this function must be
+                                   an instance of 'RequiredConfigSchema'.")
   ; TODO add display name / label
   ; TODO add error message for required config - perhaps as a part of the return value from 'required-config', or as a separate function
 
