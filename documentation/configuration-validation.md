@@ -103,7 +103,9 @@ a : {
 
 Note that this approach takes a narrower approach than the previous two options
 and tackles a simpler problem: only validating required keys, doesn't check
-values, types of values, or account for disallowed keys.  TODO is this good enough?
+values, types of values, or account for disallowed keys ... which, quite
+unfortunately, is the example I used in the problem statement.  Darn.
+TODO is this good enough?
 
 ### Are there other options?
 
